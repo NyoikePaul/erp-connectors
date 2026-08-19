@@ -1,17 +1,5 @@
 """
-Generic REST connector — for custom-built ERPs (e.g. a bespoke Next.js /
-NestJS backend) that don't follow a documented standard like OData or
-Odoo's RPC API.
-
-This is deliberately the most configurable connector: every field/endpoint
-name is passed in rather than hardcoded, because a hand-rolled ERP's shape
-is unknown until you've inspected its API. Start here whenever you're
-integrating with an undocumented system — get one resource round-tripping,
-then tighten the field_map as you learn the real schema.
-
-Auth defaults to bearer-token (JWT), the most common pattern for a custom
-Next.js/NestJS backend using something like NextAuth or a hand-rolled
-JWT issuer. Swap `_headers()` if the target uses API keys or cookies instead.
+Generic REST connector for custom ERPs — bearer token, field-mappable, with retry.
 """
 
 from __future__ import annotations
@@ -19,7 +7,9 @@ from __future__ import annotations
 import requests
 
 from .base import ERPConnector
+from .exceptions import AuthenticationError, TransientError
 from .models import Customer, Invoice, SyncResult
+from .retry import with_retry
 
 
 class GenericRESTConnector(ERPConnector):
@@ -37,8 +27,6 @@ class GenericRESTConnector(ERPConnector):
         self.token = token
         self.customers_path = customers_path
         self.invoices_path = invoices_path
-        # Maps canonical field name -> this system's actual JSON key.
-        # Override per deployment once you've inspected the real API.
         self.field_map = field_map or {
             "name": "name",
             "email": "email",
@@ -48,18 +36,27 @@ class GenericRESTConnector(ERPConnector):
         }
 
     def authenticate(self) -> None:
-        # Bearer tokens are typically long-lived or refreshed externally
-        # for a custom backend — override with a real login call if the
-        # target issues short-lived tokens instead.
         if not self.token:
-            raise ConnectionError("No bearer token configured for GenericRESTConnector.")
+            raise AuthenticationError("No bearer token configured for GenericRESTConnector.")
 
     def _headers(self) -> dict:
         self.authenticate()
         return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
 
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        def _call():
+            try:
+                resp = requests.request(method, url, headers=self._headers(), timeout=30, **kwargs)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                raise TransientError(str(exc)) from exc
+            if resp.status_code in (429, 500, 502, 503, 504):
+                raise TransientError(f"REST {resp.status_code}: {resp.text[:200]}")
+            return resp
+
+        return with_retry(_call)
+
     def get_customer(self, external_id: str) -> Customer | None:
-        resp = requests.get(f"{self.base_url}{self.customers_path}/{external_id}", headers=self._headers())
+        resp = self._request("GET", f"{self.base_url}{self.customers_path}/{external_id}")
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
@@ -84,16 +81,14 @@ class GenericRESTConnector(ERPConnector):
             fm["currency"]: customer.currency,
         }
         if customer.external_id:
-            resp = requests.put(
+            resp = self._request(
+                "PUT",
                 f"{self.base_url}{self.customers_path}/{customer.external_id}",
-                headers=self._headers(),
                 json=payload,
             )
             op, new_id = "update", customer.external_id
         else:
-            resp = requests.post(
-                f"{self.base_url}{self.customers_path}", headers=self._headers(), json=payload
-            )
+            resp = self._request("POST", f"{self.base_url}{self.customers_path}", json=payload)
             op = "create"
             new_id = str(resp.json().get("id")) if resp.ok else None
         return SyncResult(
@@ -110,11 +105,15 @@ class GenericRESTConnector(ERPConnector):
             "currency": invoice.currency,
             "issueDate": invoice.issue_date.isoformat(),
             "lines": [
-                {"description": l.description, "quantity": str(l.quantity), "unitPrice": str(l.unit_price)}
-                for l in invoice.lines
+                {
+                    "description": line.description,
+                    "quantity": str(line.quantity),
+                    "unitPrice": str(line.unit_price),
+                }
+                for line in invoice.lines
             ],
         }
-        resp = requests.post(f"{self.base_url}{self.invoices_path}", headers=self._headers(), json=payload)
+        resp = self._request("POST", f"{self.base_url}{self.invoices_path}", json=payload)
         new_id = str(resp.json().get("id")) if resp.ok else None
         return SyncResult(
             success=resp.ok,
@@ -125,7 +124,7 @@ class GenericRESTConnector(ERPConnector):
         )
 
     def get_invoice_status(self, external_id: str) -> str | None:
-        resp = requests.get(f"{self.base_url}{self.invoices_path}/{external_id}", headers=self._headers())
+        resp = self._request("GET", f"{self.base_url}{self.invoices_path}/{external_id}")
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

@@ -1,11 +1,5 @@
 """
-Odoo connector — talks to Odoo's JSON-RPC endpoint (/jsonrpc).
-
-Odoo has no separate "API layer": external calls go through the same ORM
-methods (`search_read`, `create`, `write`) that Odoo's own UI uses. That
-makes this connector a thin, honest wrapper rather than a translation of
-some separate REST surface.
-
+Odoo connector — XML-RPC External API with retry + structured errors.
 Docs: https://www.odoo.com/documentation/latest/developer/reference/external_api.html
 """
 
@@ -14,7 +8,10 @@ from __future__ import annotations
 import xmlrpc.client
 
 from .base import ERPConnector
+from .exceptions import AuthenticationError, TransientError
 from .models import Customer, Invoice, SyncResult
+from .retry import with_retry
+from .status import normalize_status
 
 
 class OdooConnector(ERPConnector):
@@ -31,15 +28,32 @@ class OdooConnector(ERPConnector):
     def authenticate(self) -> None:
         if self._uid is not None:
             return
-        common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
-        self._uid = common.authenticate(self.db, self.username, self.api_key, {})
-        if not self._uid:
-            raise ConnectionError("Odoo authentication failed — check db/username/api key.")
+
+        def _auth():
+            try:
+                common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
+                uid = common.authenticate(self.db, self.username, self.api_key, {})
+            except (ConnectionError, TimeoutError, OSError, xmlrpc.client.ProtocolError) as exc:
+                raise TransientError(str(exc)) from exc
+            if not uid:
+                raise AuthenticationError("Odoo authentication failed — check db/username/api key.")
+            return uid
+
+        self._uid = with_retry(_auth)
         self._models = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object")
 
     def _execute(self, model: str, method: str, *args):
         self.authenticate()
-        return self._models.execute_kw(self.db, self._uid, self.api_key, model, method, list(args))
+
+        def _call():
+            try:
+                return self._models.execute_kw(
+                    self.db, self._uid, self.api_key, model, method, list(args)
+                )
+            except (ConnectionError, TimeoutError, OSError, xmlrpc.client.ProtocolError) as exc:
+                raise TransientError(str(exc)) from exc
+
+        return with_retry(_call)
 
     def get_customer(self, external_id: str) -> Customer | None:
         records = self._execute(
@@ -76,7 +90,10 @@ class OdooConnector(ERPConnector):
             new_id = self._execute("res.partner", "create", payload)
             op = "create"
         return SyncResult(
-            success=True, system=self.system_name, operation=f"upsert_customer:{op}", external_id=str(new_id)
+            success=True,
+            system=self.system_name,
+            operation=f"upsert_customer:{op}",
+            external_id=str(new_id),
         )
 
     def create_invoice(self, invoice: Invoice) -> SyncResult:
@@ -102,11 +119,19 @@ class OdooConnector(ERPConnector):
             },
         )
         return SyncResult(
-            success=True, system=self.system_name, operation="create_invoice", external_id=str(new_id)
+            success=True,
+            system=self.system_name,
+            operation="create_invoice",
+            external_id=str(new_id),
         )
 
     def get_invoice_status(self, external_id: str) -> str | None:
         records = self._execute(
-            "account.move", "search_read", [[["id", "=", int(external_id)]]], {"fields": ["state"]}
+            "account.move",
+            "search_read",
+            [[["id", "=", int(external_id)]]],
+            {"fields": ["state"]},
         )
-        return records[0]["state"] if records else None
+        if not records:
+            return None
+        return normalize_status(self.system_name, records[0]["state"])
