@@ -20,17 +20,17 @@ from enum import Enum
 
 
 class SyncDirection(str, Enum):
-    PULL = "pull"    # source system -> canonical model
-    PUSH = "push"    # canonical model -> target system
+    PULL = "pull"  # source system -> canonical model
+    PUSH = "push"  # canonical model -> target system
 
 
 @dataclass
 class Customer:
-    external_id: str | None       # ID in the *source* system, if pulled from one
+    external_id: str | None  # ID in the *source* system, if pulled from one
     name: str
     email: str | None = None
     phone: str | None = None
-    tax_id: str | None = None      # KRA PIN, VAT number, etc.
+    tax_id: str | None = None  # KRA PIN, VAT number, etc.
     currency: str = "KES"
     is_company: bool = False
     extra: dict = field(default_factory=dict)
@@ -53,15 +53,12 @@ class Invoice:
     issue_date: datetime
     due_date: datetime | None
     lines: list[InvoiceLine] = field(default_factory=list)
-    status: str = "draft"          # draft | posted | paid | cancelled
+    status: str = "draft"  # draft | posted | paid | cancelled
     extra: dict = field(default_factory=dict)
 
     @property
     def total(self) -> Decimal:
-        return sum(
-            (line.quantity * line.unit_price) * (1 + line.tax_rate / 100)
-            for line in self.lines
-        )
+        return sum((line.quantity * line.unit_price) * (1 + line.tax_rate / 100) for line in self.lines)
 
 
 @dataclass
@@ -71,7 +68,7 @@ class Product:
     name: str
     unit_price: Decimal
     currency: str = "KES"
-    tracking: str = "none"         # none | lot | serial
+    tracking: str = "none"  # none | lot | serial
     extra: dict = field(default_factory=dict)
 
 
@@ -79,6 +76,7 @@ class Product:
 class SyncResult:
     """Returned by every connector operation so callers get a uniform result
     regardless of which system they just talked to."""
+
     success: bool
     system: str
     operation: str

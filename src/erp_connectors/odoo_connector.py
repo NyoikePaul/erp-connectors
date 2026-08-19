@@ -39,13 +39,12 @@ class OdooConnector(ERPConnector):
 
     def _execute(self, model: str, method: str, *args):
         self.authenticate()
-        return self._models.execute_kw(
-            self.db, self._uid, self.api_key, model, method, list(args)
-        )
+        return self._models.execute_kw(self.db, self._uid, self.api_key, model, method, list(args))
 
     def get_customer(self, external_id: str) -> Customer | None:
         records = self._execute(
-            "res.partner", "search_read",
+            "res.partner",
+            "search_read",
             [[["id", "=", int(external_id)]]],
             {"fields": ["id", "name", "email", "phone", "vat", "is_company"]},
         )
@@ -53,8 +52,11 @@ class OdooConnector(ERPConnector):
             return None
         r = records[0]
         return Customer(
-            external_id=str(r["id"]), name=r["name"], email=r.get("email") or None,
-            phone=r.get("phone") or None, tax_id=r.get("vat") or None,
+            external_id=str(r["id"]),
+            name=r["name"],
+            email=r.get("email") or None,
+            phone=r.get("phone") or None,
+            tax_id=r.get("vat") or None,
             is_company=r.get("is_company", False),
         )
 
@@ -73,24 +75,38 @@ class OdooConnector(ERPConnector):
         else:
             new_id = self._execute("res.partner", "create", payload)
             op = "create"
-        return SyncResult(success=True, system=self.system_name, operation=f"upsert_customer:{op}", external_id=str(new_id))
+        return SyncResult(
+            success=True, system=self.system_name, operation=f"upsert_customer:{op}", external_id=str(new_id)
+        )
 
     def create_invoice(self, invoice: Invoice) -> SyncResult:
         line_commands = [
-            (0, 0, {
-                "name": line.description,
-                "quantity": float(line.quantity),
-                "price_unit": float(line.unit_price),
-            })
+            (
+                0,
+                0,
+                {
+                    "name": line.description,
+                    "quantity": float(line.quantity),
+                    "price_unit": float(line.unit_price),
+                },
+            )
             for line in invoice.lines
         ]
-        new_id = self._execute("account.move", "create", {
-            "move_type": "out_invoice",
-            "partner_id": int(invoice.customer_external_id),
-            "invoice_line_ids": line_commands,
-        })
-        return SyncResult(success=True, system=self.system_name, operation="create_invoice", external_id=str(new_id))
+        new_id = self._execute(
+            "account.move",
+            "create",
+            {
+                "move_type": "out_invoice",
+                "partner_id": int(invoice.customer_external_id),
+                "invoice_line_ids": line_commands,
+            },
+        )
+        return SyncResult(
+            success=True, system=self.system_name, operation="create_invoice", external_id=str(new_id)
+        )
 
     def get_invoice_status(self, external_id: str) -> str | None:
-        records = self._execute("account.move", "search_read", [[["id", "=", int(external_id)]]], {"fields": ["state"]})
+        records = self._execute(
+            "account.move", "search_read", [[["id", "=", int(external_id)]]], {"fields": ["state"]}
+        )
         return records[0]["state"] if records else None

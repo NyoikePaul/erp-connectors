@@ -47,8 +47,11 @@ def main() -> None:
     for label, connector in [("Business Central", bc), ("Custom Next.js ERP", custom_erp)]:
         target_customer = Customer(
             external_id=None,  # unknown in the target system -> creates new
-            name=customer.name, email=customer.email, phone=customer.phone,
-            tax_id=customer.tax_id, currency=customer.currency,
+            name=customer.name,
+            email=customer.email,
+            phone=customer.phone,
+            tax_id=customer.tax_id,
+            currency=customer.currency,
             is_company=customer.is_company,
         )
         result = connector.upsert_customer(target_customer)

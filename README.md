@@ -15,10 +15,14 @@ from erp_connectors import OdooConnector, DynamicsBCConnector, Customer
 odoo = OdooConnector(url=..., db=..., username=..., api_key=...)
 bc = DynamicsBCConnector(tenant_id=..., client_id=..., client_secret=..., environment=..., company_id=...)
 
-customer = odoo.get_customer("42")          # pull from Odoo
-bc.upsert_customer(Customer(                # push into Business Central
-    external_id=None, name=customer.name, email=customer.email,
-))
+customer = odoo.get_customer("42")  # pull from Odoo
+bc.upsert_customer(
+    Customer(  # push into Business Central
+        external_id=None,
+        name=customer.name,
+        email=customer.email,
+    )
+)
 ```
 
 ## Why this exists

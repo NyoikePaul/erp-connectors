@@ -25,10 +25,14 @@ from .models import Customer, Invoice, SyncResult
 class GenericRESTConnector(ERPConnector):
     system_name = "generic_rest"
 
-    def __init__(self, base_url: str, token: str,
-                 customers_path: str = "/api/customers",
-                 invoices_path: str = "/api/invoices",
-                 field_map: dict | None = None):
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        customers_path: str = "/api/customers",
+        invoices_path: str = "/api/invoices",
+        field_map: dict | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.customers_path = customers_path
@@ -36,8 +40,11 @@ class GenericRESTConnector(ERPConnector):
         # Maps canonical field name -> this system's actual JSON key.
         # Override per deployment once you've inspected the real API.
         self.field_map = field_map or {
-            "name": "name", "email": "email", "phone": "phone",
-            "tax_id": "taxId", "currency": "currency",
+            "name": "name",
+            "email": "email",
+            "phone": "phone",
+            "tax_id": "taxId",
+            "currency": "currency",
         }
 
     def authenticate(self) -> None:
@@ -79,16 +86,22 @@ class GenericRESTConnector(ERPConnector):
         if customer.external_id:
             resp = requests.put(
                 f"{self.base_url}{self.customers_path}/{customer.external_id}",
-                headers=self._headers(), json=payload,
+                headers=self._headers(),
+                json=payload,
             )
             op, new_id = "update", customer.external_id
         else:
-            resp = requests.post(f"{self.base_url}{self.customers_path}", headers=self._headers(), json=payload)
+            resp = requests.post(
+                f"{self.base_url}{self.customers_path}", headers=self._headers(), json=payload
+            )
             op = "create"
             new_id = str(resp.json().get("id")) if resp.ok else None
         return SyncResult(
-            success=resp.ok, system=self.system_name, operation=f"upsert_customer:{op}",
-            external_id=new_id, message="" if resp.ok else resp.text,
+            success=resp.ok,
+            system=self.system_name,
+            operation=f"upsert_customer:{op}",
+            external_id=new_id,
+            message="" if resp.ok else resp.text,
         )
 
     def create_invoice(self, invoice: Invoice) -> SyncResult:
@@ -104,8 +117,11 @@ class GenericRESTConnector(ERPConnector):
         resp = requests.post(f"{self.base_url}{self.invoices_path}", headers=self._headers(), json=payload)
         new_id = str(resp.json().get("id")) if resp.ok else None
         return SyncResult(
-            success=resp.ok, system=self.system_name, operation="create_invoice",
-            external_id=new_id, message="" if resp.ok else resp.text,
+            success=resp.ok,
+            system=self.system_name,
+            operation="create_invoice",
+            external_id=new_id,
+            message="" if resp.ok else resp.text,
         )
 
     def get_invoice_status(self, external_id: str) -> str | None:

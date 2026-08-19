@@ -21,8 +21,7 @@ from .models import Customer, Invoice, SyncResult
 class DynamicsBCConnector(ERPConnector):
     system_name = "dynamics_bc"
 
-    def __init__(self, tenant_id: str, client_id: str, client_secret: str,
-                 environment: str, company_id: str):
+    def __init__(self, tenant_id: str, client_id: str, client_secret: str, environment: str, company_id: str):
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
@@ -62,8 +61,11 @@ class DynamicsBCConnector(ERPConnector):
         resp.raise_for_status()
         r = resp.json()
         return Customer(
-            external_id=r["id"], name=r["displayName"], email=r.get("email") or None,
-            phone=r.get("phoneNumber") or None, currency=r.get("currencyCode") or "KES",
+            external_id=r["id"],
+            name=r["displayName"],
+            email=r.get("email") or None,
+            phone=r.get("phoneNumber") or None,
+            currency=r.get("currencyCode") or "KES",
         )
 
     def upsert_customer(self, customer: Customer) -> SyncResult:
@@ -76,7 +78,8 @@ class DynamicsBCConnector(ERPConnector):
         if customer.external_id:
             resp = requests.patch(
                 f"{self.base_url}/customers({customer.external_id})",
-                headers={**self._headers(), "If-Match": "*"}, json=payload,
+                headers={**self._headers(), "If-Match": "*"},
+                json=payload,
             )
             op, new_id = "update", customer.external_id
         else:
@@ -84,8 +87,11 @@ class DynamicsBCConnector(ERPConnector):
             op = "create"
             new_id = resp.json().get("id") if resp.ok else None
         return SyncResult(
-            success=resp.ok, system=self.system_name, operation=f"upsert_customer:{op}",
-            external_id=new_id, message="" if resp.ok else resp.text,
+            success=resp.ok,
+            system=self.system_name,
+            operation=f"upsert_customer:{op}",
+            external_id=new_id,
+            message="" if resp.ok else resp.text,
         )
 
     def create_invoice(self, invoice: Invoice) -> SyncResult:
@@ -109,8 +115,11 @@ class DynamicsBCConnector(ERPConnector):
                     },
                 )
         return SyncResult(
-            success=resp.ok, system=self.system_name, operation="create_invoice",
-            external_id=new_id, message="" if resp.ok else resp.text,
+            success=resp.ok,
+            system=self.system_name,
+            operation="create_invoice",
+            external_id=new_id,
+            message="" if resp.ok else resp.text,
         )
 
     def get_invoice_status(self, external_id: str) -> str | None:

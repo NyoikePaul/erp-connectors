@@ -77,10 +77,20 @@ def test_upsert_customer_creates_then_updates():
 
 def test_invoice_total_computes_with_tax():
     invoice = Invoice(
-        external_id=None, customer_external_id="1", number=None,
-        currency="KES", issue_date=datetime(2026, 8, 1, tzinfo=timezone.utc), due_date=None,
-        lines=[InvoiceLine(description="Rooted cuttings", quantity=Decimal(100),
-                            unit_price=Decimal(50), tax_rate=Decimal(16))],
+        external_id=None,
+        customer_external_id="1",
+        number=None,
+        currency="KES",
+        issue_date=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        due_date=None,
+        lines=[
+            InvoiceLine(
+                description="Rooted cuttings",
+                quantity=Decimal(100),
+                unit_price=Decimal(50),
+                tax_rate=Decimal(16),
+            )
+        ],
     )
     # 100 * 50 = 5000, +16% tax = 5800
     assert invoice.total == Decimal("5800.00") or invoice.total == 5800
