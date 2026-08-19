@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import random
 import time
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from .exceptions import TransientError
 

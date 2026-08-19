@@ -1,6 +1,6 @@
 [project]
 name = "erp-connectors"
-version = "0.1.0"
+version = "0.2.0"
 description = "A canonical-model integration layer that unifies Odoo, Microsoft Dynamics 365 Business Central, and custom-built (e.g. Next.js/NestJS) ERPs behind one interface."
 readme = "README.md"
 requires-python = ">=3.10"
